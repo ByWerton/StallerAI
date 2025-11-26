@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StallerAI - Gelişmiş Modelleme</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Three.js ve Eklentileri -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #020617;
+            color: #f8fafc;
+            overflow: hidden;
+            margin: 0;
+            cursor: default; 
+        }
+
+        /* Netflix Tarzı Splash Animasyonu (Yeni) */
+        @keyframes line-draw {
+            0% { height: 0; }
+            100% { height: 100%; }
+        }
+        @keyframes line-flash {
+            0%, 100% { opacity: 1; box-shadow: 0 0 10px #e50914, 0 0 30px #e50914; }
+            50% { opacity: 1; box-shadow: 0 0 50px #ff000a, 0 0 150px #ff000a; }
+        }
+        
+        #splash-screen {
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(to bottom right, #0f172a, #1e1b4b);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            transition: opacity 1s ease-out, visibility 1s;
+        }
+
+        .netflix-container {
+            position: relative;
+            width: 150px;
+            height: 150px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .splash-line {
+            position: absolute;
+            width: 20px;
+            height: 100%;
+            background: linear-gradient(to top, #e50914, #ff000a); 
+            box-shadow: 0 0 10px #e50914, 0 0 30px #ff000a;
+            transition: all 0.3s ease-in-out;
+            animation: line-draw 1.5s ease-out forwards;
+        }
+
+        .splash-line.left {
+            left: 0;
+            transform: translateX(-75px);
+        }
+
+        .splash-line.right {
+            right: 0;
+            transform: translateX(75px);
+        }
+
+        #splash-text-main {
+            position: relative;
+            font-size: 3rem;
+            font-weight: 900;
+            z-index: 10;
+            color: white;
+            letter-spacing: -0.05em;
+            text-shadow: 0 0 10px rgba(0,0,0,0.5);
+            /* Başlangıçta opacity 0 */
+        }
+        
+        /* Diğer UI stilleri (aynı kaldı) */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+        }
+
+        .neon-input:focus, .neon-select:focus {
+            box-shadow: 0 0 15px rgba(236, 72, 153, 0.3);
+            border-color: rgba(236, 72, 153, 0.6);
+        }
+        
+        .neon-select {
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='white'%3e%3cpath d='M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z' clip-rule='evenodd' fill-rule='evenodd'%3e%3c/path%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 0.75rem center;
+            background-size: 1.5em 1.5em;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+        }
+
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at 50% 50%, #1e1b4b 0%, #020617 100%);
+        }
+
+        @keyframes loading-bar {
+            0% { width: 0%; left: 0; }
+            50% { width: 50%; left: 25%; }
+            100% { width: 100%; left: 0; }
+        }
+        .loading-progress {
+            animation: loading-bar 1.5s infinite ease-in-out;
+        }
+        
+        /* Kaydırma Çubuğu Stili (Öğrenme Notları için) */
+        #history-list::-webkit-scrollbar {
+            width: 6px;
+        }
+        #history-list::-webkit-scrollbar-thumb {
+            background-color: rgba(236, 72, 153, 0.5);
+            border-radius: 3px;
+        }
+        #history-list::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.5);
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col selection:bg-red-500 selection:text-white">
+
+    <!-- AÇILIŞ EKRANI -->
+    <div id="splash-screen">
+        
+        <!-- Animasyon Alanı -->
+        <div class="netflix-container mb-4">
+            <!-- İki Çizgi -->
+            <div id="line-left" class="splash-line left"></div>
+            <div id="line-right" class="splash-line right"></div>
+            <!-- Ana Metin -->
+            <div id="splash-text-main" class="text-white opacity-0 transition-opacity duration-500">StallerAI</div>
+        </div>
+        <!-- Alt Metin -->
+        <div id="splash-text-sub" class="text-gray-400 font-mono text-xs opacity-0 transition-opacity duration-500 mt-2">Made by ElevenGalaxy</div>
+
+        <!-- Yükleme Çubuğu -->
+        <div id="splash-info" class="mt-8 text-center opacity-0 transition-opacity duration-500">
+            <div class="w-48 h-1 bg-gray-800 rounded overflow-hidden mb-2">
+                <div class="h-full bg-gradient-to-r from-red-500 to-pink-500 loading-progress relative"></div>
+            </div>
+            <div class="text-xs text-red-300 animate-pulse">Model Motoru Yükleniyor...</div>
+        </div>
+    </div>
+
+    <!-- ANA UYGULAMA -->
+    <div id="main-app" class="flex flex-col h-full hidden opacity-0 transition-opacity duration-1000">
+        
+        <!-- ÜST PANEL -->
+        <header class="glass-panel z-20 relative px-6 py-4 flex flex-col lg:flex-row justify-between items-center gap-4 border-b-0 rounded-b-2xl mx-4 mt-2">
+            
+            <!-- Sol: Logo, Model Seçimi & Seviye -->
+            <div class="flex items-center gap-4 w-full lg:w-auto">
+                <div class="text-2xl font-black tracking-tighter text-white cursor-default select-none">
+                    <span class="text-red-500">S</span>AI
+                </div>
+                
+                <div class="flex flex-col">
+                    <span class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Seviye</span>
+                    <span id="level-display" class="text-sm font-bold text-gray-200">Başlangıç Seviyesi</span>
+                </div>
+
+                <div class="h-8 w-px bg-white/10 hidden md:block"></div>
+
+                <!-- Model Seçim Kutusu -->
+                <div class="flex flex-col w-full md:w-auto">
+                    <span class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Motor</span>
+                    <select id="model-select" class="neon-select bg-slate-900/50 text-white px-3 py-1 rounded-lg border border-white/10 outline-none transition-all text-sm font-semibold cursor-pointer">
+                        <!-- Seçenekler JS ile doldurulacak -->
+                    </select>
+                </div>
+
+            </div>
+
+            <!-- Orta: Input & Butonlar -->
+            <div class="flex w-full lg:max-w-xl gap-2 mt-4 lg:mt-0">
+                <input type="text" id="prompt-input" 
+                       class="w-full bg-slate-900/50 text-white px-4 py-3 rounded-xl border border-white/10 outline-none neon-input transition-all placeholder-gray-500"
+                       placeholder="Örn: Siberpunk Motosiklet, Kristal Kale...">
+                
+                <button id="btn-generate" class="bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-500 hover:to-pink-500 text-white font-bold px-6 py-3 rounded-xl transition-all shadow-lg shadow-red-900/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap">
+                    Oluştur
+                </button>
+
+                <!-- İndirme Butonu (GLB) -->
+                <button id="btn-download" class="bg-white/10 hover:bg-white/20 text-white font-bold px-4 py-3 rounded-xl transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed whitespace-nowrap" title="Oluşturulan Modeli GLB olarak İndir">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                </button>
+            </div>
+
+            <!-- Sağ: Seviye Artır -->
+            <button id="btn-learn" class="w-full lg:w-auto px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-emerald-400 font-medium text-sm transition flex items-center justify-center gap-2 mt-4 lg:mt-0 disabled:opacity-30">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+                <span>Seviye Artır</span>
+            </button>
+        </header>
+
+        <!-- 3D SAHNE -->
+        <main class="flex-grow relative w-full h-full">
+            <div id="canvas-container"></div>
+            
+            <div id="loading-overlay" class="absolute inset-0 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center z-30 hidden transition-all">
+                <div class="relative w-24 h-24">
+                    <div class="absolute inset-0 border-4 border-red-500/30 rounded-full animate-pulse"></div>
+                    <div class="absolute inset-0 border-4 border-transparent border-t-pink-500 rounded-full animate-spin"></div>
+                </div>
+                <div class="mt-8 text-center">
+                    <h3 class="text-xl font-bold text-white mb-1">Veri İşleniyor</h3>
+                    <p class="text-sm text-red-300 animate-pulse" id="loading-text">Google AI yanıtı bekleniyor...</p>
+                </div>
+            </div>
+
+            <div id="error-toast" class="absolute top-24 right-4 md:right-auto md:left-1/2 md:-translate-x-1/2 bg-red-950/90 border border-red-500/50 text-red-200 px-6 py-4 rounded-xl shadow-2xl hidden z-50 flex flex-col items-start gap-2 max-w-md backdrop-blur-xl transition-all">
+                <div class="flex items-center gap-4">
+                    <div class="bg-red-500/20 p-2 rounded-full shrink-0">
+                        <svg class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-white text-sm" id="error-title">Simülasyon Devrede</h4>
+                        <p class="text-xs opacity-80 mt-1" id="error-msg">Bağlantı kurulamadı, yerel model üretiliyor.</p>
+                    </div>
+                </div>
+                <div id="error-detail-box" class="w-full text-xs bg-red-900/50 p-2 rounded hidden">
+                    <span class="font-semibold text-red-300">Tam Hata Detayı:</span> <span id="error-detail-text" class="text-red-100 break-words"></span>
+                </div>
+            </div>
+            
+            <div class="absolute bottom-32 right-4 md:bottom-4 md:right-4 text-[10px] text-white/30 font-mono text-right pointer-events-none select-none">
+                ORBIT CONTROLS<br>LMB: ROTATE | RMB: PAN | SCROLL: ZOOM
+            </div>
+        </main>
+
+        <!-- ALT PANEL -->
+        <footer class="glass-panel z-20 mx-4 mb-4 rounded-2xl p-4 md:p-6">
+            <div class="flex flex-col md:flex-row gap-6">
+                
+                <!-- Analiz Sonucu (flex-1) -->
+                <div class="flex-1">
+                    <div class="flex items-center gap-2 mb-2 text-red-400 font-bold text-xs uppercase tracking-wider">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        Analiz Sonucu
+                    </div>
+                    <p id="insight-text" class="text-sm text-slate-300 leading-relaxed font-light">
+                        Lütfen yukarıdan bir model seçin ve oluşturmak istediğiniz nesneyi yazın.
+                    </p>
+                </div>
+                
+                <!-- Öğrenme Notları (1/3) -->
+                <div class="md:w-1/3 border-t md:border-t-0 md:border-l border-white/10 pt-4 md:pt-0 md:pl-6">
+                    <div class="flex items-center gap-2 mb-2 text-emerald-400 font-bold text-xs uppercase tracking-wider">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        Öğrenme Notları (Son 5)
+                    </div>
+                    <ul id="history-list" class="text-xs text-slate-400 space-y-2 max-h-24 overflow-y-auto pr-2">
+                        <li class="italic opacity-50">Henüz sonuç yok.</li>
+                    </ul>
+                </div>
+                
+                <!-- Veri Kaynağı (1/3) -->
+                <div class="md:w-1/3 border-t md:border-t-0 md:border-l border-white/10 pt-4 md:pt-0 md:pl-6">
+                    <div class="flex items-center gap-2 mb-2 text-pink-400 font-bold text-xs uppercase tracking-wider">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"></path></svg>
+                        Veri Kaynağı
+                    </div>
+                    <ul id="sources-list" class="text-xs text-slate-400 space-y-1">
+                        <li class="italic opacity-50">Bekleniyor...</li>
+                    </ul>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js'; 
+
+        // --- YAPILANDIRMA ---
+        const CONFIG = {
+            // Lütfen geçerli bir API Anahtarı ile değiştirin
+            apiKey: "AIzaSyDkhjS1pFI5_WRChhvo8tVo5is7HoSwN9g", 
+            model: "" 
+        };
+
+        const MODEL_MAP = [
+            { name: "Gemini 2.5 Flash (Hızlı)", id: "gemini-2.5-flash", description: "Hızlı, maliyet etkin ve genel amaçlı model. Çoğu tasarım için idealdir." },
+            { name: "Gemini 2.5 Pro (Detaylı)", id: "gemini-2.5-pro", description: "Daha karmaşık ve yaratıcı tasarımlar için yüksek kaliteli model. Daha yavaş olabilir." }
+        ];
+
+        const LEVELS = [
+            { name: "Başlangıç", color: "text-slate-400", mult: 0.1 },
+            { name: "Orta Seviye", color: "text-blue-400", mult: 0.3 },
+            { name: "Gelişmiş", color: "text-red-400", mult: 0.5 },
+            { name: "Usta", color: "text-pink-400", mult: 0.7 },
+            { name: "Staller Elite", color: "text-amber-400", mult: 0.9 },
+            { name: "InfinityApex", color: "text-white", mult: 1.0, special: true }
+        ];
+
+        let currentLevel = 0;
+        let scene, camera, renderer, controls;
+        let modelGroup = new THREE.Group();
+        let learningHistory = []; // Öğrenme Notları için geçmiş dizisi
+
+        const ui = {
+            splash: document.getElementById('splash-screen'),
+            main: document.getElementById('main-app'),
+            input: document.getElementById('prompt-input'),
+            btnGen: document.getElementById('btn-generate'),
+            btnLearn: document.getElementById('btn-learn'),
+            btnDownload: document.getElementById('btn-download'),
+            loader: document.getElementById('loading-overlay'),
+            levelDisplay: document.getElementById('level-display'),
+            insight: document.getElementById('insight-text'),
+            sources: document.getElementById('sources-list'),
+            errorToast: document.getElementById('error-toast'),
+            errorTitle: document.getElementById('error-title'),
+            errorMsg: document.getElementById('error-msg'),
+            errorDetailBox: document.getElementById('error-detail-box'),
+            errorDetailText: document.getElementById('error-detail-text'),
+            modelSelect: document.getElementById('model-select'),
+            splashInfo: document.getElementById('splash-info'),
+            // Yeni UI elementleri
+            lineLeft: document.getElementById('line-left'),
+            lineRight: document.getElementById('line-right'),
+            splashTextMain: document.getElementById('splash-text-main'),
+            splashTextSub: document.getElementById('splash-text-sub'),
+            historyList: document.getElementById('history-list'),
+        };
+
+        window.onload = () => {
+            initModelSelector(); 
+            initThree();
+            
+            startSplashScreen();
+            
+            // Olay Dinleyicileri
+            ui.btnGen.addEventListener('click', () => generateModel());
+            ui.btnLearn.addEventListener('click', levelUp);
+            ui.input.addEventListener('keydown', (e) => e.key === 'Enter' && generateModel());
+            ui.modelSelect.addEventListener('change', handleModelChange);
+            ui.btnDownload.addEventListener('click', exportModel);
+
+            updateLevelUI();
+            renderPlaceholder();
+            ui.btnDownload.disabled = true;
+        };
+
+        // --- AÇILIŞ AKIŞI (YENİ ANİMASYON) ---
+        function startSplashScreen() {
+            // Yükleme bilgisini göstermek için 0.3 saniye bekle
+            setTimeout(() => {
+                ui.splashInfo.classList.remove('opacity-0');
+            }, 300);
+
+            // 1.5s: Çizgilerin merkeze doğru gelmesi (CSS animasyonu)
+            setTimeout(() => {
+                // 0.5s içinde birleşme animasyonunu başlat
+                ui.lineLeft.style.transition = 'transform 0.5s ease-in-out';
+                ui.lineRight.style.transition = 'transform 0.5s ease-in-out';
+                
+                // Birbirine yaklaştır
+                ui.lineLeft.style.transform = 'translateX(65px)';
+                ui.lineRight.style.transform = 'translateX(-65px)';
+
+                // 2.0s: Çizgiler birleşti. Şimdi flash efektini başlat (0.3s)
+                setTimeout(() => {
+                    ui.lineLeft.style.animation = 'line-flash 0.3s ease-out 1 forwards';
+                    ui.lineRight.style.animation = 'line-flash 0.3s ease-out 1 forwards';
+
+                    // 2.3s: Parlama bitti, metni göster (0.5s)
+                    setTimeout(() => {
+                        ui.lineLeft.style.opacity = '0';
+                        ui.lineRight.style.opacity = '0';
+                        ui.splashTextMain.classList.remove('opacity-0');
+                        ui.splashTextSub.classList.remove('opacity-0');
+                    }, 300);
+
+                    // 3.0s: Uygulamayı başlat
+                    setTimeout(() => {
+                        ui.splash.style.opacity = '0';
+                        ui.splash.style.visibility = 'hidden';
+                        ui.main.classList.remove('hidden');
+                        
+                        setTimeout(() => {
+                            ui.main.classList.remove('opacity-0');
+                            ui.splash.remove(); 
+                            controls.autoRotate = true; 
+                        }, 1000); 
+                    }, 700); 
+                }, 1500); // Toplam 3s bekleme süresi
+            }, 100); 
+        }
+        
+        // --- MODEL SEÇİM YÖNETİMİ ---
+        function initModelSelector() {
+            MODEL_MAP.forEach((model, index) => {
+                const option = document.createElement('option');
+                option.value = model.id;
+                option.textContent = model.name;
+                if (index === 0) {
+                    option.selected = true;
+                    CONFIG.model = model.id;
+                }
+                ui.modelSelect.appendChild(option);
+            });
+            handleModelChange();
+        }
+
+        function handleModelChange() {
+            const selectedId = ui.modelSelect.value;
+            CONFIG.model = selectedId;
+            
+            const selectedModel = MODEL_MAP.find(m => m.id === selectedId);
+            if (selectedModel) {
+                ui.insight.textContent = `Seçili Motor: ${selectedModel.name}. ${selectedModel.description}`;
+            }
+        }
+
+
+        // --- THREE.JS KURULUMU ve DİĞER FONKSİYONLAR ---
+        function initThree() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x020617, 0.02);
+
+            camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 100);
+            camera.position.set(5, 4, 6);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            container.appendChild(renderer.domElement);
+
+            const ambient = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambient);
+
+            const mainLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            mainLight.position.set(5, 8, 5);
+            mainLight.castShadow = true;
+            mainLight.shadow.mapSize.width = 1024;
+            mainLight.shadow.mapSize.height = 1024;
+            scene.add(mainLight);
+
+            const purpleLight = new THREE.PointLight(0xa855f7, 2, 20);
+            purpleLight.position.set(-5, 2, -5);
+            scene.add(purpleLight);
+
+            const grid = new THREE.GridHelper(30, 30, 0x334155, 0x0f172a);
+            grid.position.y = -0.5;
+            scene.add(grid);
+
+            scene.add(modelGroup);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.autoRotate = true;
+            controls.autoRotateSpeed = 0.5;
+
+            window.addEventListener('resize', () => {
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            });
+            animate();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // YENİ: Materyal mantığı, InfinityApex için MeshPhysicalMaterial kullanır
+        function renderModel(blocks) {
+            // Önceki modeli temizle
+            while(modelGroup.children.length) {
+                const c = modelGroup.children[0];
+                if(c.geometry) c.geometry.dispose();
+                // Materyal cache'den gelmediyse dispose et
+                if(c.material && !c.material.isCached) c.material.dispose();
+                modelGroup.remove(c);
+            }
+
+            const matCache = {};
+            const isApex = LEVELS[currentLevel].special === true;
+
+            blocks.forEach(b => {
+                let geo;
+                const segs = 32 + (currentLevel * 10); 
+                switch(b.type) {
+                    case 'Sphere': geo = new THREE.SphereGeometry(b.size[0], segs, segs); break;
+                    case 'Cylinder': geo = new THREE.CylinderGeometry(b.size[0], b.size[0], b.size[1], segs); break;
+                    default: geo = new THREE.BoxGeometry(...b.size);
+                }
+
+                if(!matCache[b.color]) {
+                    if (isApex) {
+                        // InfinityApex: Gerçekçi, metalik, clearcoat efekti
+                        matCache[b.color] = new THREE.MeshPhysicalMaterial({
+                            color: b.color,
+                            roughness: 0.1,
+                            metalness: 0.9,
+                            clearcoat: 1.0, 
+                            clearcoatRoughness: 0.1,
+                            sheen: 0.2,
+                            reflectivity: 0.5,
+                        });
+                    } else {
+                        // Diğer seviyeler: Standart Materyal
+                        matCache[b.color] = new THREE.MeshStandardMaterial({
+                            color: b.color,
+                            roughness: 0.25,
+                            metalness: 0.5,
+                        });
+                    }
+                    matCache[b.color].isCached = true;
+                }
+
+                const mesh = new THREE.Mesh(geo, matCache[b.color]);
+                mesh.position.set(...b.position);
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                modelGroup.add(mesh);
+            });
+            controls.autoRotate = false;
+            ui.btnDownload.disabled = false;
+        }
+
+        function renderPlaceholder() {
+            renderModel([
+                {type:'Box', size:[1.2,0.1,1.2], position:[0,-0.45,0], color:'#3b82f6'},
+                {type:'Cylinder', size:[0.3, 2], position:[0,0.6,0], color:'#ec4899'},
+                {type:'Sphere', size:[0.6], position:[0,1.8,0], color:'#a855f7'}
+            ]);
+            controls.autoRotate = true;
+            ui.btnDownload.disabled = true;
+        }
+
+        // YAPAY ZEKA API İŞLEMLERİ
+        async function generateModel() {
+            const prompt = ui.input.value.trim();
+            if(!prompt || !CONFIG.model) return;
+
+            setLoading(true);
+            ui.errorToast.classList.add('hidden');
+            
+            const levelData = LEVELS[currentLevel] || LEVELS[LEVELS.length - 1];
+            const finalMult = levelData.special ? levelData.mult : LEVELS[currentLevel].mult;
+            const partCount = Math.floor(6 + finalMult * 40); 
+            const selectedModelName = MODEL_MAP.find(m => m.id === CONFIG.model)?.name || "Bilinmiyor";
+
+            const systemInstructions = `
+                Role: 3D Artist AI.
+                Task: Create 3D model for "${prompt}".
+                Level: ${levelData.name} (Multiplier: ${finalMult.toFixed(2)}).
+                Parts: Use EXACTLY ${partCount} blocks (Box, Sphere, Cylinder).
+                Format: JSON ONLY.
+                { 
+                    "model": [{"type": "Box", "size": [w,h,d], "position": [x,y,z], "color": "#hex"}], 
+                    "insight": "Turkish explanation of the design and materials in 50 words. Focus on how the complexity (Part count: ${partCount}) affects the realism and detail."
+                }
+                Center the entire model at [0,0,0]. Keep model size within 6x6x6 grid.
+            `;
+
+            try {
+                const maxRetries = 3;
+                let response;
+                let errorText = "";
+
+                for (let i = 0; i < maxRetries; i++) {
+                    response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${CONFIG.model}:generateContent?key=${CONFIG.apiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: systemInstructions }] }],
+                            generationConfig: { responseMimeType: "application/json" }
+                        })
+                    });
+
+                    if (response.ok || response.status === 403 || response.status === 401) {
+                        if(!response.ok) {
+                             errorText = await response.text();
+                             console.error(`API HATASI: HTTP ${response.status} - ${response.statusText}. Hata Metni:`, errorText);
+                        }
+                        break;
+                    }
+
+                    if (response.status === 429 || response.status >= 500) {
+                        const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        console.log(`DEBUG: Deneme ${i + 1} başarısız oldu (${response.status}). ${delay}ms bekleniyor.`);
+                    } else {
+                        errorText = await response.text();
+                        console.error(`API HATASI: HTTP ${response.status} - ${response.statusText}. Hata Metni:`, errorText);
+                        break;
+                    }
+                }
+                
+                if(!response.ok) {
+                    throw new Error(`API HATASI: HTTP ${response.status} - ${response.statusText} - Yanıt: ${errorText}`);
+                }
+
+                const data = await response.json();
+                
+                if(!data.candidates || !data.candidates[0].content) {
+                    throw new Error("API boş yanıt döndürdü veya yapı bozuk.");
+                }
+
+                const jsonText = data.candidates[0].content.parts[0].text;
+                const sanitizedJsonText = jsonText.substring(jsonText.indexOf('{'), jsonText.lastIndexOf('}') + 1);
+                const result = JSON.parse(sanitizedJsonText);
+                
+                renderModel(result.model);
+                ui.insight.textContent = result.insight;
+                ui.sources.innerHTML = `<li class='text-green-400'>Motor: ${selectedModelName} (Parça Sayısı: ${partCount})</li>`;
+                
+                // Başarılı işlemde geçmişi güncelle
+                updateHistory(prompt, levelData.name, partCount);
+
+            } catch (err) {
+                
+                let title = "Bağlantı Sorunu";
+                let msg = "API bağlantısı başarısız oldu, simülasyon başlatılıyor.";
+                let detail = "Ağ bağlantınızı veya API anahtarınızın geçerliliğini kontrol edin.";
+
+                if(err.message.includes("API HATASI")) {
+                    const errorParts = err.message.split(" - Yanıt:");
+                    const statusAndText = errorParts[0];
+                    const rawBody = errorParts.length > 1 ? errorParts[1] : "Detay yok.";
+                    
+                    detail = rawBody; 
+
+                    if(statusAndText.includes("403") || statusAndText.includes("401")) {
+                        title = "ANAHTAR HATASI (403/401)";
+                        msg = "Anahtar yetkilendirilmemiş, geçersiz veya kısıtlanmış olabilir. Lütfen 'Tam Hata Detayı'nı kopyalayıp bana gönderin.";
+                    } else if(statusAndText.includes("429")) {
+                        title = "KOTA AŞIMI (429)";
+                        msg = "Hız limiti aşıldı. Lütfen birkaç saniye bekleyip tekrar deneyin.";
+                        detail = "Rate limit exceeded.";
+                    } else if(statusAndText.includes("404")) {
+                        title = "MODEL ADI HATASI (404)";
+                        msg = "Model adı yanlış. Zaten düzelttik, bu hatayı tekrar görüyorsanız anahtarınız kısıtlanmış olabilir.";
+                    }
+                } else if (err.message.includes("JSON")) {
+                    title = "JSON BOZUK";
+                    msg = "AI yanıtı doğru formatta gelmedi. Tekrar deneyin veya farklı bir prompt kullanın.";
+                    detail = err.message;
+                }
+                
+                showError(title, msg, detail);
+                runSimulation(levelData);
+
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        // ÖĞRENME NOTLARI GÜNCELLEME
+        function updateHistory(prompt, level, partCount) {
+            learningHistory.unshift({ prompt, level, partCount, time: new Date().toLocaleTimeString('tr-TR', {hour: '2-digit', minute:'2-digit'}) });
+            
+            // Yalnızca son 5 kaydı tut
+            learningHistory = learningHistory.slice(0, 5); 
+
+            if (ui.historyList) {
+                ui.historyList.innerHTML = learningHistory.map(item => `
+                    <li class="flex justify-between items-start border-b border-white/5 pb-1 last:border-b-0">
+                        <span class="text-white/80 max-w-[80%] truncate" title="${item.prompt}">${item.prompt}</span>
+                        <span class="text-[10px] text-emerald-400 font-mono flex-shrink-0 ml-2">${item.time} (${item.partCount}p)</span>
+                    </li>
+                `).join('');
+            }
+        }
+
+        // İNDİRME İŞLEVLERİ (GLB)
+        function exportModel() {
+            const exporter = new GLTFExporter();
+            
+            exporter.parse(
+                modelGroup, 
+                function(result) {
+                    saveArrayBuffer(result, `${ui.input.value.replace(/[^a-z0-9]/gi, '_') || 'StallerAI_Model'}.glb`);
+                }, 
+                { binary: true }
+            );
+        }
+
+        function saveArrayBuffer(buffer, filename) {
+            save(new Blob([buffer], { type: 'application/octet-stream' }), filename);
+        }
+
+        function save(blob, filename) {
+            const link = document.createElement('a');
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            link.click();
+
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+        }
+
+        // YARDIMCI FONKSİYONLAR
+        function showError(title, msg, detail = null) {
+            ui.errorTitle.textContent = title;
+            ui.errorMsg.textContent = msg;
+            
+            if (detail) {
+                ui.errorDetailText.textContent = detail.substring(0, 500); 
+                ui.errorDetailBox.classList.remove('hidden');
+            } else {
+                ui.errorDetailBox.classList.add('hidden');
+            }
+
+            ui.errorToast.classList.remove('hidden');
+            setTimeout(() => ui.errorToast.classList.add('hidden'), 10000);
+        }
+
+        // Sonsuz Öğrenme Mantığı
+        function levelUp() {
+            if(currentLevel < LEVELS.length - 1) {
+                currentLevel++;
+            } else {
+                // InfinityApex seviyesindeyken her basışta çarpanı biraz artır
+                LEVELS[LEVELS.length - 1].mult += 0.05; 
+            }
+            updateLevelUI();
+            if(ui.input.value) generateModel();
+        }
+
+        function updateLevelUI() {
+            const l = LEVELS[currentLevel];
+            let levelName = l.name;
+            
+            if(l.special && currentLevel === LEVELS.length - 1) {
+                 levelName = `${l.name} (Gerçekçilik: +${((l.mult - 1.0) * 100).toFixed(0)}%)`;
+            }
+
+            ui.levelDisplay.textContent = levelName;
+            ui.levelDisplay.className = `text-sm font-bold transition-colors ${l.color}`;
+            
+            ui.btnLearn.disabled = false;
+            if(currentLevel === LEVELS.length - 1) {
+                ui.btnLearn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg> <span>Sonsuz Öğrenme</span>`;
+            } else {
+                ui.btnLearn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg> <span>Seviye Artır</span>`;
+            }
+            ui.btnLearn.classList.remove('opacity-30');
+        }
+
+        function setLoading(active) {
+            if(active) {
+                ui.loader.classList.remove('hidden');
+                ui.btnGen.disabled = true;
+                ui.btnLearn.disabled = true;
+                ui.input.disabled = true;
+                ui.modelSelect.disabled = true;
+            } else {
+                ui.loader.classList.add('hidden');
+                ui.btnGen.disabled = false;
+                ui.input.disabled = false;
+                ui.modelSelect.disabled = false;
+                ui.input.focus();
+                ui.btnLearn.disabled = false; 
+            }
+        }
+
+        function runSimulation(level) {
+            const finalMult = level.special ? level.mult : level.mult;
+            const count = Math.floor(10 + finalMult * 20);
+            const simBlocks = [];
+            const palette = ['#e50914', '#ff000a', '#3b82f6', '#14b8a6', '#f59e0b'];
+            
+            for(let i=0; i<count; i++) {
+                const isSphere = Math.random() > 0.7;
+                simBlocks.push({
+                    type: isSphere ? 'Sphere' : 'Box',
+                    size: isSphere ? [Math.random()*0.5] : [Math.random()*1.5, Math.random()*1.5, Math.random()*1.5].map(v => v * finalMult + 0.1),
+                    position: [(Math.random()-0.5)*5, (Math.random()-0.5)*5, (Math.random()-0.5)*5],
+                    color: palette[Math.floor(Math.random() * palette.length)]
+                });
+            }
+            renderModel(simBlocks);
+            ui.insight.textContent = "Bağlantı hatası nedeniyle yerel simülasyon (Simulated Reality) devrede. Lütfen bir süre bekleyin veya anahtarınızı kontrol edin.";
+            ui.sources.innerHTML = "<li class='text-amber-400'>Yerel Simülasyon</li>";
+        }
+    </script>
+</body>
+</html>
+
